@@ -24,36 +24,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Build standard static PWA
+      - name: Build static PWA
         shell: bash
         run: |
-          python - <<'PY'
-          import base64, gzip, pathlib, re, urllib.request
-
-          base = 'https://sampleflow-qvoenesdn-ganmiao9-7712s-projects.vercel.app'
-          req = urllib.request.Request(base + '/', headers={'User-Agent':'Mozilla/5.0'})
-          wrapper = urllib.request.urlopen(req, timeout=60).read().decode('utf-8')
-          m = re.search(r"const b='([^']+)'", wrapper)
-          if not m:
-              raise RuntimeError('Could not locate embedded SampleFlow application payload')
-
-          app_html = gzip.decompress(base64.b64decode(m.group(1))).decode('utf-8')
-          if 'SampleFlow' not in app_html or 'const SEED=' not in app_html:
-              raise RuntimeError('Recovered application failed integrity check')
-
-          out = pathlib.Path('_site')
-          out.mkdir(exist_ok=True)
-          (out / 'index.html').write_text(app_html, encoding='utf-8')
-
-          for name in ['manifest.webmanifest', 'sw.js', 'icon.svg']:
-              req = urllib.request.Request(base + '/' + name, headers={'User-Agent':'Mozilla/5.0'})
-              data = urllib.request.urlopen(req, timeout=60).read()
-              (out / name).write_bytes(data)
-
-          (out / '.nojekyll').write_text('', encoding='utf-8')
-          print('Built files:', [p.name for p in out.iterdir()])
-          print('index.html bytes:', (out / 'index.html').stat().st_size)
-          PY
+          mkdir -p _site
+          base64 -d app.html.gz.b64 | gzip -d > _site/index.html
+          cp manifest.webmanifest sw.js icon.svg _site/
+          touch _site/.nojekyll
+          test -s _site/index.html
+          grep -q 'SampleFlow' _site/index.html
+          grep -q 'const SEED=' _site/index.html
+          echo "index.html bytes: $(wc -c < _site/index.html)"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
