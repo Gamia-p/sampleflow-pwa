@@ -29,20 +29,25 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p _site
-          SOURCE='https://sampleflow-qvoenesdn-ganmiao9-7712s-projects.vercel.app/'
-          curl --fail --location --compressed \
-            --retry 3 --retry-delay 2 \
-            -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36' \
-            -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
-            "$SOURCE" -o wrapper.html
+          SHARE='https://sampleflow-qvoenesdn-ganmiao9-7712s-projects.vercel.app/?_vercel_share=GyTbbN2XUb8TvWOLLH9ITjKzEsdigVi3'
+          BASE='https://sampleflow-qvoenesdn-ganmiao9-7712s-projects.vercel.app/'
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151 Safari/537.36'
+
+          # Open the temporary Vercel share link once to obtain its authorization cookie.
+          curl --fail --location --compressed --cookie-jar cookies.txt --cookie cookies.txt \
+            --retry 3 --retry-delay 2 -A "$UA" "$SHARE" -o first.html
+
+          # Fetch the deployment again with the cookie. This is the real SampleFlow wrapper.
+          curl --fail --location --compressed --cookie-jar cookies.txt --cookie cookies.txt \
+            --retry 3 --retry-delay 2 -A "$UA" "$BASE" -o wrapper.html
+
           echo "wrapper bytes: $(wc -c < wrapper.html)"
-          grep -q "const b='" wrapper.html
           python - <<'PY'
           import base64, gzip, pathlib, re
           text=pathlib.Path('wrapper.html').read_text(encoding='utf-8')
           m=re.search(r"const b='([^']+)'", text)
           if not m:
-              raise SystemExit('embedded app payload not found')
+              raise SystemExit('embedded app payload not found after Vercel share authorization')
           html=gzip.decompress(base64.b64decode(m.group(1))).decode('utf-8')
           if 'SampleFlow' not in html or 'const SEED=' not in html:
               raise SystemExit('recovered app failed integrity check')
