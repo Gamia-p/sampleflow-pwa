@@ -1,0 +1,68 @@
+name: Deploy SampleFlow PWA to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build standard static PWA
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64, gzip, pathlib, re, urllib.request
+
+          base = 'https://sampleflow-qvoenesdn-ganmiao9-7712s-projects.vercel.app'
+          req = urllib.request.Request(base + '/', headers={'User-Agent':'Mozilla/5.0'})
+          wrapper = urllib.request.urlopen(req, timeout=60).read().decode('utf-8')
+          m = re.search(r"const b='([^']+)'", wrapper)
+          if not m:
+              raise RuntimeError('Could not locate embedded SampleFlow application payload')
+
+          app_html = gzip.decompress(base64.b64decode(m.group(1))).decode('utf-8')
+          if 'SampleFlow' not in app_html or 'const SEED=' not in app_html:
+              raise RuntimeError('Recovered application failed integrity check')
+
+          out = pathlib.Path('_site')
+          out.mkdir(exist_ok=True)
+          (out / 'index.html').write_text(app_html, encoding='utf-8')
+
+          for name in ['manifest.webmanifest', 'sw.js', 'icon.svg']:
+              req = urllib.request.Request(base + '/' + name, headers={'User-Agent':'Mozilla/5.0'})
+              data = urllib.request.urlopen(req, timeout=60).read()
+              (out / name).write_bytes(data)
+
+          (out / '.nojekyll').write_text('', encoding='utf-8')
+          print('Built files:', [p.name for p in out.iterdir()])
+          print('index.html bytes:', (out / 'index.html').stat().st_size)
+          PY
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./_site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
